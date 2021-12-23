@@ -30,6 +30,16 @@
   EPFL CS-472 2021 Final Project Option 2
 */
 
+/*
+* ==============================================================================================================
+* File           :  simulation_cec.hpp
+* Description    :  Simulation-based CEC.
+* Notes          :  For the project of Design Technologies for Integrated Systems.
+*                :  Project option 2 : Combinational Equivalence Checking Using Circuit Simulation
+* Author         :  Titouan MATHERET, Grenoble-INP & EPFL (MNIS), titouan.matheret@epfl.ch, Sciper: 339515
+* ==============================================================================================================
+*/
+
 #pragma once
 
 #include <kitty/constructors.hpp>
@@ -40,50 +50,141 @@
 #include "miter.hpp"
 #include "simulation.hpp"
 
-namespace mockturtle
-{
+namespace mockturtle {
 
 /* Statistics to be reported */
-struct simulation_cec_stats
-{
+struct simulation_cec_stats {
+
   /*! \brief Split variable (simulation size). */
   uint32_t split_var{ 0 };
 
-  /*! \brief Number of simulation rounds. */
+  /*! \brief Number of simulation round. */
   uint32_t rounds{ 0 };
+
 };
 
-namespace detail
-{
+namespace detail {
+
+/* ---------------------------------------------------------------------------------------------------------
+ * ------------------------------------------ CIRCUIT_SIMULATOR --------------------------------------------
+ * --------------------------------------------------------------------------------------------------------- */
+
+class circuit_simulator {
+
+public:
+
+  /* constructor of the class */
+  circuit_simulator( unsigned int num_variables, unsigned int split_variables, unsigned int round )
+      : num_variables( num_variables ), split_variables( split_variables ), round( round )
+  {
+  }
+
+  /* returns the dynamic truth table or its complement depending on the value of the parameter "select"
+   * select = 0 --> return the truth table
+   * select = 1 --> return its complement */
+  [[nodiscard]] kitty::dynamic_truth_table compute_constant( bool select ) const {
+    kitty::dynamic_truth_table dyn_tt( split_variables );
+    if ( select ) {
+      return ~dyn_tt;
+    }
+    else {
+      return dyn_tt;
+    }
+  }
+
+  /* returns a small truth table depending on the index "ind" given as parameter */
+  [[nodiscard]] kitty::dynamic_truth_table compute_pi( uint64_t ind ) const {
+    kitty::dynamic_truth_table dyn_tt( split_variables );
+    if ( ind < split_variables ) {
+      kitty::create_nth_var( dyn_tt, ind );
+    }
+    else {
+      if ( ( ( round >> ( ind - split_variables ) ) & 1 ) != 0 ) {
+        dyn_tt = ~dyn_tt;
+      }
+    }
+    return dyn_tt;
+  }
+
+  /* returns the complement of the truth table */
+  [[nodiscard]] static kitty::dynamic_truth_table compute_not( kitty::dynamic_truth_table const& dtt ) {
+    return ~dtt;
+  }
+
+private:
+
+  /* elements of the class */
+  unsigned int num_variables;
+  unsigned int split_variables;
+  unsigned int round;
+
+};
+
+/* ---------------------------------------------------------------------------------------------------------
+ * ----------------------------------------- SIMULATION_CEC_IMPL -------------------------------------------
+ * --------------------------------------------------------------------------------------------------------- */
 
 template<class Ntk>
-class simulation_cec_impl
-{
+
+class simulation_cec_impl {
+
 public:
+
   using pattern_t = unordered_node_map<kitty::dynamic_truth_table, Ntk>;
   using node = typename Ntk::node;
   using signal = typename Ntk::signal;
 
 public:
+
+  /* constructor of the class */
   explicit simulation_cec_impl( Ntk& ntk, simulation_cec_stats& st )
-      : _ntk( ntk ),
-        _st( st )
+      : _ntk( ntk ), _st( st )
   {
   }
 
-  bool run()
-  {
-    /* TODO: write your implementation here */
-    return false;
+  /* compute the rounds required, generate the patterns and simulate truth tables
+   * check the equivalence of all the small truth tables
+   * return FALSE if circuits are NOT equivalent (a difference is spotted)
+   * return TRUE if the circuits are equivalent (no difference spotted on any small truth tables) */
+  bool run() {
+    uint64_t cnt_round;
+    compute_split_rounds();
+    for ( cnt_round = 0 ; cnt_round < _st.rounds ; ++cnt_round ) {
+      circuit_simulator circuit_simulator(_ntk.num_pis(), _st.split_var, cnt_round);
+      const std::vector<kitty::dynamic_truth_table> dtt = simulate<kitty::dynamic_truth_table>(_ntk, circuit_simulator);
+      for ( auto& po : dtt ) {
+        if ( kitty::is_const0(po) == 0 ) {
+          return FALSE;
+        }
+      }
+    }
+    /* no differences have been observed so the circuits are equivalent */
+    return TRUE;
   }
 
 private:
-  /* you can add additional methods here */
+
+  /* define the variable limit for the truth table
+   * in order to limit the memory usage to a maximum of 512 MB */
+  void compute_split_rounds() {
+    if ( _ntk.num_pis() <= 6 ) {
+      _st.split_var = _ntk.num_pis();
+    }
+    else {
+      uint64_t m;
+      for ( m = 7 ; m < _ntk.num_pis() && (32 + pow(2, (m-3 + 1))) * _ntk.size() <= pow(2, 29) ; ++m ) {
+      }
+      _st.split_var = m;
+    }
+    _st.rounds = pow(2, _ntk.num_pis() - _st.split_var);
+  }
 
 private:
+
+  /* elements of the class */
   Ntk& _ntk;
   simulation_cec_stats& _st;
-  /* you can add other attributes here */
+
 };
 
 } // namespace detail
