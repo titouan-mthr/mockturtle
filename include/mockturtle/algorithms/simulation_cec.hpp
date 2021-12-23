@@ -154,12 +154,12 @@ public:
       const std::vector<kitty::dynamic_truth_table> dtt = simulate<kitty::dynamic_truth_table>(_ntk, circuit_simulator);
       for ( auto& po : dtt ) {
         if ( kitty::is_const0(po) == 0 ) {
-          return FALSE;
+          return false;
         }
       }
     }
     /* no differences have been observed so the circuits are equivalent */
-    return TRUE;
+    return true;
   }
 
 private:
